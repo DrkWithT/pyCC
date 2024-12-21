@@ -8,7 +8,7 @@ import pyCC.pyCmp.lexer as pycc_lexer
 
 PyCCToken = pycc_lexer.TokenType
 
-class lexer_tester(unittest.TestCase):
+class LexerTester(unittest.TestCase):
     def test_sample_1(self):
         # NOTE ignore spaces though for simplicity.
         expected_token_types = [
@@ -40,11 +40,9 @@ class lexer_tester(unittest.TestCase):
 
             while True:
                 temp_token = tokenizer.lex_next()
-                print(temp_token)
 
                 if temp_token is None:
                     test_ok = (result_tags == expected_token_types)
-                    print(f'Invalid sequence: {result_tags}')
                     break
 
                 if temp_token[2] == PyCCToken.SPACING:
@@ -56,6 +54,66 @@ class lexer_tester(unittest.TestCase):
                     break
 
                 result_tags.append(temp_token[2])
+
+        self.assertTrue(test_ok)
+    
+    def test_sample_2(self):
+        tokenizer = pycc_lexer.Lexer()
+        test_ok = True
+
+        with open('./c_samples/test_02.c') as source_2:
+            tokenizer.use_source(source_2.read())
+
+            while True:
+                temp = tokenizer.lex_next()
+
+                if temp is None:
+                    break
+
+                if temp[2] == PyCCToken.UNKNOWN:
+                    print(f'Invalid token found: {temp}')
+                    test_ok = False
+                    break
+
+        self.assertTrue(test_ok)
+    
+    def test_sample_3(self):
+        tokenizer = pycc_lexer.Lexer()
+        test_ok = True
+
+        with open('./c_samples/test_03.c') as source_3:
+            tokenizer.use_source(source_3.read())
+
+            while True:
+                temp = tokenizer.lex_next()
+
+                if temp is None:
+                    break
+
+                if temp[2] == PyCCToken.UNKNOWN:
+                    print(f'Invalid token found: {temp}')
+                    test_ok = False
+                    break
+
+        self.assertTrue(test_ok)
+
+    def test_sample_4(self):
+        tokenizer = pycc_lexer.Lexer()
+        test_ok = True
+
+        with open('./c_samples/test_04.c') as source_4:
+            tokenizer.use_source(source_4.read())
+
+            while True:
+                temp = tokenizer.lex_next()
+
+                if temp is None:
+                    break
+
+                if temp[2] == PyCCToken.UNKNOWN:
+                    print(f'Invalid token found: {temp}')
+                    test_ok = False
+                    break
 
         self.assertTrue(test_ok)
 
