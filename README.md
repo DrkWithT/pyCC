@@ -1,5 +1,5 @@
-# pyCC
-A Basic C Compiler written in Python.
+# pyCC (fork)
+A basic C compiler written in Python. Supports a teeny tiny part of C99.
 
 Currently only supports returning values.
 ## Usage:
@@ -8,8 +8,6 @@ Currently only supports returning values.
 ```
 
 ## TODO:
-- [ ] Fix the format of this directory
-    - [ ] Put the parser, lexer, pyCmp into their own directory
-- [ ] Fix code formatting
-    - [ ] Settle on a formatter
-    - [ ] Change the style in "driver"
+ - Test and fix parser!
+ - Create and test AST printer!
+ - Create code generator by the ASTVisitor!
