@@ -1,60 +1,287 @@
-from enum import Enum, auto
-import re
-from typing import List, Tuple
+"""
+    Modified by DrkWithT (Derek Tan) at 12/20/2024:
+    Refactor lexer to recognize more tokens flexibly.
+"""
 
+from enum import Enum, auto
+
+## Types & Aliases ##
+
+OPERATOR_SYMBOLS = '=+-*/'
 
 class TokenType(Enum):
-    CONSTINT = auto()
-    INT = auto()
-    VOID = auto()
-    RETURN = auto()
-    POPEN = auto()
-    PCLOSE = auto()
-    BOPEN = auto()
-    BCLOSE = auto()
-    SEMICOLON = auto()
+    SPACING = auto()
+    LINE_COMMENT = auto()
     IDENTIFIER = auto()
+    KEYWORD = auto()
+    LITERAL_INT = auto()
+    TYPENAME_BOOL = auto()
+    TYPENAME_INT = auto()
+    TYPENAME_VOID = auto()
+    OP_ASSIGN = auto()
+    OP_PLUS = auto()
+    OP_MINUS = auto()
+    OP_TIMES = auto()
+    OP_SLASH = auto()
+    COMMA = auto()
+    SEMICOLON = auto()
+    PAREN_OPEN = auto()
+    PAREN_CLOSE = auto()
+    BRACE_OPEN = auto()
+    BRACE_CLOSE = auto()
+    UNKNOWN = auto()
 
+# NOTE represents a hashmap of reserved words in C to lexical type.
+LexemeTable = dict[str, TokenType]
 
-TokenToRegex = {
-    TokenType.CONSTINT: re.compile(r"[0-9]+\b"),
-    TokenType.INT: re.compile(r"int\b"),
-    TokenType.VOID: re.compile(r"void\b"),
-    TokenType.RETURN: re.compile(r"return\b"),
-    TokenType.POPEN: re.compile(r"\("),
-    TokenType.PCLOSE: re.compile(r"\)"),
-    TokenType.BOPEN: re.compile(r"\{"),
-    TokenType.BCLOSE: re.compile(r"\}"),
-    TokenType.SEMICOLON: re.compile(r";"),
-    TokenType.IDENTIFIER: re.compile(r"[a-zA-Z_]\w*\b"),
+# NOTE represents a line,col pair.
+TokenPos = tuple[int, int]
+
+# NOTE represents a token containing a lexeme, type, and position... None means EOF!
+TokenObj = tuple[str, TokenPos, TokenType] | None
+
+## Constants ##
+
+PYCC_KEYWORDS = {
+    "return": TokenType.KEYWORD,
+    "if": TokenType.KEYWORD,
+    "else": TokenType.KEYWORD,
+    "while": TokenType.KEYWORD,
+    "break": TokenType.KEYWORD,
+    "continue": TokenType.KEYWORD
 }
 
+PYCC_TYPENAMES = {
+    "_Bool": TokenType.TYPENAME_BOOL,
+    "int": TokenType.TYPENAME_INT,
+    "void": TokenType.TYPENAME_VOID
+}
 
-def lex(input_str: str) -> List[Tuple[TokenType, str]]:
-    """Lexes input string into Tokens
+PYCC_OPERATORS = {
+    "=": TokenType.OP_ASSIGN,
+    "+": TokenType.OP_PLUS,
+    "-": TokenType.OP_MINUS,
+    "*": TokenType.OP_TIMES,
+    "/": TokenType.OP_SLASH
+}
 
-    Args:
-        input_str (str): The input string
+## Helper Functions ##
 
-    Raises:
-        ValueError: Error parsing
+def match_spacing(symbol: str) -> bool:
+    return symbol[0].isspace()
 
-    Returns:
-        List[(TokenType, str)]: Tokens lexed
+def match_alphabetic(symbol: str) -> bool:
+    return symbol[0].isalpha() or symbol[0] == '_'
+
+def match_numeric(symbol: str) -> bool:
+    return symbol[0].isnumeric()
+
+def match_op_symbol(symbol: str) -> bool:
+    return OPERATOR_SYMBOLS.find(symbol[0]) != -1
+
+class Lexer:
     """
-    res = []
+        A tokenizer for a tiny part of C99?? O_O
+    """
+    def __init__(self, keywords: LexemeTable = PYCC_KEYWORDS, typenames: LexemeTable = PYCC_TYPENAMES, operators: LexemeTable = PYCC_OPERATORS) -> None:
+        self.keyword_table = keywords
+        self.types_table = typenames
+        self.operator_table = operators
+        self.source_view: str = None
+        self.pos: int = 0
+        self.limit: int = 0
+        self.line: int = 1;
+        self.column: int = 1;
 
-    input_str = input_str.strip()
-    while input_str != "":
-        found = False
-        for token_type in TokenType:
-            match = TokenToRegex[token_type].match(input_str)
-            if match:
-                found = True
-                res.append((token_type, match[0]))
-                input_str = input_str[len(match[0]) :]
+    def use_source(self, source: str):
+        self.source_view = source
+        self.pos = 0
+        self.limit = len(source)
+        self.line = 1
+        self.column = 1
+
+    def update_tracked_loc(self, symbol: str) -> None:
+        if symbol[0] == '\n':
+            self.line += 1
+            self.column = 1
+        else:
+            self.column += 1
+
+    def at_end(self) -> bool:
+        return self.pos >= self.limit
+
+    def lex_spacing(self) -> TokenObj:
+        token_start = self.pos
+        token_length = 0
+
+        while not self.at_end():
+            c = self.source_view[self.pos]
+
+            if not match_spacing(c):
                 break
-        if not found:
-            raise ValueError("INVALID LEX")
-        input_str = input_str.strip()
-    return res
+
+            self.update_tracked_loc(c)
+            self.pos += 1
+            token_length += 1
+        
+        return (
+            self.source_view[token_start: token_start + token_length],
+            (self.line, self.column),
+            TokenType.SPACING
+        )
+
+    def lex_comment(self) -> TokenObj:
+        self.pos += 2 # skip '//'
+        token_start = self.pos
+        token_length = 0
+
+        while not self.at_end():
+            c = self.source_view[self.pos]
+
+            if c == '\n':
+                break
+
+            self.update_tracked_loc(c)
+            self.pos += 1
+            token_length += 1
+
+        return (
+            self.source_view[token_start: token_start + token_length],
+            (self.line, self.column - token_length),
+            TokenType.LINE_COMMENT
+        )
+
+    def lex_single(self, token_type: TokenType) -> TokenObj:
+        token_start = self.pos
+        self.pos += 1
+
+        self.column += 1
+
+        return (
+            self.source_view[token_start: token_start + 1],
+            (self.line, self.column),
+            token_type
+        )
+    
+    def lex_word(self) -> TokenObj:
+        token_start = self.pos
+        token_length = 0
+
+        while not self.at_end():
+            c = self.source_view[self.pos]
+
+            if not match_alphabetic(c):
+                break
+
+            self.update_tracked_loc(c)
+            self.pos += 1
+            token_length += 1
+
+        lexeme = self.source_view[token_start: token_start + token_length]
+        token_type = TokenType.UNKNOWN
+
+        if self.keyword_table.get(lexeme) is not None:
+            token_type = self.keyword_table.get(lexeme)
+        elif self.types_table.get(lexeme) is not None:
+            token_type = self.types_table.get(lexeme)
+        else:
+            token_type = TokenType.IDENTIFIER
+
+        return (
+            lexeme,
+            (self.line, self.column - token_length),
+            token_type
+        )
+    
+    def lex_number(self) -> TokenObj:
+        token_start = self.pos
+        token_length = 0
+        dots = 0
+
+        while not self.at_end():
+            c = self.source_view[self.pos]
+
+            if not match_numeric(c):
+                break
+
+            if c == '.':
+                dots += 1
+
+            self.update_tracked_loc(c)
+            self.pos += 1
+            token_length += 1
+
+        return (
+            self.source_view[token_start: token_start + token_length],
+            (self.line, self.column - token_length),
+            TokenType.LITERAL_INT
+        )
+
+    def lex_operator(self) -> TokenObj:
+        token_start = self.pos
+        token_length = 0
+
+        while not self.at_end():
+            c = self.source_view[self.pos]
+
+            if not match_op_symbol(c):
+                break
+
+            self.update_tracked_loc(c)
+            self.pos += 1
+            token_length += 1
+
+        lexeme = self.source_view[token_start: token_start + token_length]
+
+        if self.operator_table.get(lexeme) is None:
+            return (
+                lexeme,
+                (self.line, self.column - token_length),
+                TokenType.UNKNOWN
+            )
+
+        return (
+            lexeme,
+            (self.line, self.column),
+            self.operator_table.get(lexeme)
+        )
+
+    def lex_next(self) -> TokenObj:
+        if self.at_end():
+            return None
+
+        peeked_c = self.source_view[self.pos]
+
+        if peeked_c == ',':
+            return self.lex_single(TokenType.COMMA)
+        elif peeked_c == ';':
+            return self.lex_single(TokenType.SEMICOLON)
+        elif peeked_c == '(':
+            return self.lex_single(TokenType.PAREN_OPEN)
+        elif peeked_c == ')':
+            return self.lex_single(TokenType.PAREN_CLOSE)
+        elif peeked_c == '{':
+            return self.lex_single(TokenType.BRACE_OPEN)
+        elif peeked_c == '}':
+            return self.lex_single(TokenType.BRACE_CLOSE)
+        elif peeked_c == '/' and self.source_view[self.pos + 1] == '/':
+            return self.lex_comment()
+        
+        if match_spacing(peeked_c):
+            return self.lex_spacing()
+        elif match_alphabetic(peeked_c):
+            return self.lex_word()
+        elif match_numeric(peeked_c):
+            return self.lex_number()
+        elif match_op_symbol(peeked_c):
+            return self.lex_operator()
+
+        bogus_pos = self.pos
+        self.pos += 1
+
+        self.update_tracked_loc(peeked_c)
+        return (
+            peeked_c,
+            (self.line, self.column - 1),
+            TokenType.UNKNOWN
+        )

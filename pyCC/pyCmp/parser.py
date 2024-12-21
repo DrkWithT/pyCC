@@ -1,3 +1,9 @@
+"""
+    parser.py\n
+    Modified by DrkWithT (Derek Tan) on 12/20/2024\n
+    TODO fix parser to use streaming lexer, recursive descent.
+"""
+
 from .ASTNode import (
     ConstantNode,
     ExpressionNode,
@@ -45,7 +51,7 @@ class Parser:
             self.pos = startingPos
             return None
 
-        if not self.verifyTokens(TokenType.INT):
+        if not self.verifyTokens(TokenType.TYPENAME_INT):
             self.pos = startingPos
             raise ValueError("Function did not start with Int")
 
@@ -54,7 +60,7 @@ class Parser:
         parsed_identifier = self.parseIdentifier()
 
         if not self.verifyTokens(
-            TokenType.POPEN, TokenType.VOID, TokenType.PCLOSE, TokenType.BOPEN
+            TokenType.PAREN_OPEN, TokenType.TYPENAME_VOID, TokenType.PAREN_CLOSE, TokenType.BRACE_OPEN
         ):
             self.pos = startingPos
             raise ValueError("Function did not start with '(){'")
@@ -65,7 +71,7 @@ class Parser:
         if not parsed_statement:
             return None
 
-        if not self.verifyTokens(TokenType.BCLOSE):
+        if not self.verifyTokens(TokenType.BRACE_CLOSE):
             self.pos = startingPos
             raise ValueError("Can't parse Function")
 
@@ -96,7 +102,7 @@ class Parser:
 
     def parseExpression(self):
 
-        if not self.verifyTokens(TokenType.CONSTINT):
+        if not self.verifyTokens(TokenType.LITERAL_INT):
             raise ValueError("Can't parse Expression")
 
         res = ExpressionNode(ConstantNode(self.tokens[self.pos][1]))
