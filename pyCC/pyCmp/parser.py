@@ -1,124 +1,407 @@
 """
     parser.py\n
     Modified by DrkWithT (Derek Tan) on 12/20/2024\n
-    TODO fix parser to use streaming lexer, recursive descent.
+    TODO fix parser to use streaming lexer, recursive descent.\n
+    NOTE this will need a type-qualifier & type name parse function.
 """
 
-from .ASTNode import (
-    ConstantNode,
-    ExpressionNode,
-    FunctionNode,
-    ProgramNode,
-    ReturnNode,
-    IdentifierNode,
-    ASTNode,
-)
-from .lexer import TokenType
+from enum import Enum, auto
+import pyCC.pyCmp.lexer as lex
+import pyCC.pyCmp.ast_nodes as ast
 
+## Aliases & Types & Constants ##
+
+ParseResult = tuple[bool, list[ast.Stmt]]
+TokenTag = lex.TokenType
+TokenTags = list[TokenTag]
+
+class TokenChoice(Enum):
+    previous = auto()
+    current = auto()
+
+TYPENAME_TABLE = {
+    "void": ast.DataType.VOID,
+    "char": ast.DataType.CHAR,
+    "int": ast.DataType.INT
+}
 
 class Parser:
-    def __init__(self, tokens):
-        self.tokens = tokens
-        self.root = ProgramNode(None)
-        self.pos = 0
+    def __init__(self):
+        self.lexer = lex.Lexer()
+        self.curr: lex.TokenObj = None
+        self.prev: lex.TokenObj = None
+        self.error_count = 0
 
-    def verifyTokens(self, *expectedTokens):
-        if self.pos + len(expectedTokens) > len(self.tokens):
-            return False
+    def at_end(self) -> bool:
+        return self.curr is None
 
-        for index, token in enumerate(expectedTokens):
-            if self.tokens[self.pos + index][0] != token:
-                return False
-        return True
+    def peek_curr(self) -> lex.TokenObj:
+        return self.curr
 
-    def parseProgram(self):
-        ## Always start with a 'prog'
-        parsedFunc = self.parseFunction()
-        if not parsedFunc:
-            return None
+    def peek_prev(self) -> lex.TokenObj:
+        return self.prev
 
-        ## Should ensure that there isn't anything extra
-        ## This may actually be unecessary
-        if len(self.tokens) != self.pos:
-            raise ValueError("Didn't quite parse everything")
-        self.root.function = parsedFunc
-        return self.root
+    def advance(self) -> lex.TokenObj:
+        temp = None
 
-    def parseFunction(self):
-        startingPos = self.pos
+        while True:
+            temp = self.lexer.lex_next()
 
-        if self.pos > len(self.tokens):
-            self.pos = startingPos
-            return None
+            # NOTE handle the EOF!
+            if temp is None:
+                break
 
-        if not self.verifyTokens(TokenType.TYPENAME_INT):
-            self.pos = startingPos
-            raise ValueError("Function did not start with Int")
+            if temp[2] == lex.TokenType.SPACING or temp[2] == lex.TokenType.LINE_COMMENT:
+                continue
 
-        self.pos += 1
+            break
 
-        parsed_identifier = self.parseIdentifier()
+        return temp
 
-        if not self.verifyTokens(
-            TokenType.PAREN_OPEN, TokenType.TYPENAME_VOID, TokenType.PAREN_CLOSE, TokenType.BRACE_OPEN
-        ):
-            self.pos = startingPos
-            raise ValueError("Function did not start with '(){'")
+    def match_token(self, choice: TokenChoice, matches: TokenTags) -> bool:
+        if len(matches) == 0:
+            return True
 
-        self.pos += 4
+        if choice == TokenChoice.current:
+            return len(filter(lambda m: m == self.curr[2], matches)) > 0
 
-        parsed_statement = self.parseStatement()
-        if not parsed_statement:
-            return None
+        return len(filter(lambda m: m == self.prev[2], matches)) > 0
 
-        if not self.verifyTokens(TokenType.BRACE_CLOSE):
-            self.pos = startingPos
-            raise ValueError("Can't parse Function")
+    def consume_token(self, matches: TokenTags):
+        if self.at_end():
+            return
 
-        self.pos += 1
+        if self.match_token(TokenChoice.current, matches):
+            self.prev = self.curr
+            self.curr = self.advance()
 
-        return FunctionNode(parsed_identifier, parsed_statement)
+        raise SyntaxError('Unexpected token!')
 
-    def parseStatement(self):
+    def use_source(self, source: str):
+        self.lexer.use_source(source)
 
-        startingPos = self.pos
-        if not self.verifyTokens(TokenType.RETURN):
-            self.pos = startingPos
-            return None
-        self.pos += 1
+    def parse_literal(self) -> ast.Expr:
+        if self.match_token(TokenChoice.current, [TokenTag.LITERAL_CHAR]):
+            temp = self.peek_curr()
+            self.consume_token([])
+            return ast.Literal(temp, ast.DataType.CHAR)
+        elif self.match_token(TokenChoice.current, [TokenTag.LITERAL_INT]):
+            temp = self.peek_curr()
+            self.consume_token([])
+            return ast.Literal(temp, ast.DataType.INT)
+        elif self.match_token(TokenChoice.current, [TokenTag.PAREN_OPEN]):
+            self.consume_token([])
+            temp = self.parse_expr()
+            self.consume_token([TokenTag.PAREN_CLOSE])
+            return temp
+        elif self.match_token(TokenChoice.current, [TokenTag.IDENTIFIER]):
+            # temp = self.peek_curr()
+            # self.consume_token([])
+            # return ast.Literal(temp, ast.DataType.UNKNOWN)
+            return self.parse_call_or_name()
 
-        parsedExpr = self.parseExpression()
-        if not parsedExpr:
-            self.pos = startingPos
-            raise ValueError("Can't parse Statement")
+        raise SyntaxError('Invalid token for literal!')
 
-        if not self.verifyTokens(TokenType.SEMICOLON):
-            self.pos = startingPos
-            raise ValueError("Can't parse Statement")
+    def parse_call_or_name(self):
+        self.consume_token([])
+        temp_name_token = self.peek_prev()
 
-        self.pos += 1
+        if self.match_token(TokenChoice.current, [TokenTag.PAREN_OPEN]):
+            return ast.Call(temp_name_token[0], self.parse_args())
 
-        return ReturnNode(parsedExpr)
+        return ast.Literal(temp_name_token, ast.DataType.UNKNOWN)
 
-    def parseExpression(self):
+    def parse_unary(self) -> ast.Expr:
+        if self.match_token(TokenChoice.current, [TokenTag.OP_MINUS]):
+            self.consume_token([])
+            return ast.Unary(self.parse_literal(), ast.OpType.OP_NEG)
 
-        if not self.verifyTokens(TokenType.LITERAL_INT):
-            raise ValueError("Can't parse Expression")
+        return self.parse_literal()
 
-        res = ExpressionNode(ConstantNode(self.tokens[self.pos][1]))
-        self.pos += 1
-        return res
+    def parse_factor(self) -> ast.Expr:
+        lhs = self.parse_unary()
 
-    def parseIdentifier(self):
-        if not self.verifyTokens(TokenType.IDENTIFIER):
-            raise ValueError("Can't parse Identifier")
+        while not self.at_end():
+            if not self.match_token(TokenChoice.current, [TokenTag.OP_TIMES, TokenTag.OP_SLASH]):
+                break
 
-        name = self.tokens[self.pos][1]
-        self.pos += 1
-        return IdentifierNode(name)
+            temp_op = ast.OpType.OP_DIV
 
+            if self.peek_curr()[2] == TokenTag.OP_TIMES:
+                temp_op = ast.OpType.OP_MULT
 
-def parse(lexed_input) -> ASTNode:
-    myparser = Parser(lexed_input)
-    res = myparser.parseProgram()
-    return res
+            self.consume_token([])
+
+            lhs = ast.Binary(lhs, self.parse_unary(), temp_op)
+
+        return lhs
+
+    def parse_term(self) -> ast.Expr:
+        lhs = self.parse_factor()
+
+        while not self.at_end():
+            if not self.match_token(TokenChoice.current, [TokenTag.OP_PLUS, TokenTag.OP_MINUS]):
+                break
+
+            temp_op = ast.OpType.OP_SUB
+
+            if self.peek_curr()[2] == TokenTag.OP_PLUS:
+                temp_op = ast.OpType.OP_ADD
+
+            self.consume_token([])
+
+            lhs = ast.Binary(lhs, self.parse_factor(), temp_op)
+
+        return lhs
+
+    def parse_comparison(self) -> ast.Expr:
+        lhs = self.parse_term()
+
+        while not self.at_end():
+            if not self.match_token(TokenChoice.current, [TokenTag.OP_LT_SIGN, TokenTag.OP_LTE_SIGN, TokenTag.OP_GT_SIGN, TokenTag.OP_GTE_SIGN]):
+                break
+
+            temp_op = ast.OpType.OP_NONE
+            temp_tag = self.peek_curr()[2]
+
+            if temp_tag == TokenTag.OP_LT_SIGN:
+                temp_op = ast.OpType.OP_LT
+            elif temp_tag == TokenTag.OP_LTE_SIGN:
+                temp_op = ast.OpType.OP_LTE
+            elif temp_tag == TokenTag.OP_GT_SIGN:
+                temp_op = ast.OpType.OP_GT
+            elif temp_tag == TokenTag.OP_GTE_SIGN:
+                temp_op = ast.OpType.OP_GTE
+
+            self.consume_token([])
+
+            lhs = ast.Binary(lhs, self.parse_term(), temp_op)
+
+        return lhs
+
+    def parse_equality(self) -> ast.Expr:
+        lhs = self.parse_comparison()
+
+        while not self.at_end():
+            if not self.match_token(TokenChoice.current, [TokenTag.OP_TWO_EQU, TokenTag.OP_BANG_EQU]):
+                break
+
+            temp_op = ast.OpType.OP_INEQUALITY
+
+            if self.peek_curr()[2] == TokenTag.OP_TWO_EQU:
+                temp_op = ast.OpType.OP_EQUALITY
+
+            self.consume_token([])
+
+            lhs = ast.Binary(lhs, self.parse_comparison(), temp_op)
+
+        return lhs
+
+    def parse_and(self) -> ast.Expr:
+        lhs = self.parse_equality()
+
+        while not self.at_end():
+            if not self.match_token(TokenChoice.current, [TokenTag.OP_LOGIC_AND]):
+                break
+
+            self.consume_token([])
+
+            lhs = ast.Binary(lhs, self.parse_equality(), ast.OpType.OP_LOGIC_AND)
+
+        return lhs
+
+    def parse_or(self) -> ast.Expr:
+        lhs = self.parse_and()
+
+        while not self.at_end():
+            if not self.match_token(TokenChoice.current, [TokenTag.OP_LOGIC_OR]):
+                break
+
+            self.consume_token([])
+
+            lhs = ast.Binary(lhs, self.parse_and(), ast.OpType.OP_LOGIC_OR)
+
+        return lhs
+    
+    def parse_expr(self) -> ast.Expr:
+        if self.match_token(TokenChoice.current, [TokenTag.IDENTIFIER]):
+            self.consume_token([])
+            prev_name_token = self.prev
+
+            # NOTE my workaround: now check an operator... if '=', we're at assign, but otherwise the equivalent <or> rule applies.
+            if self.match_token(TokenChoice.current, [TokenTag.OP_ASSIGN]):
+                self.consume_token([])
+                return ast.Binary(ast.Literal(prev_name_token, ast.OpType.OP_NONE), self.parse_expr(), ast.OpType.OP_ASSIGN)
+
+            lhs = ast.Literal(prev_name_token, ast.OpType.OP_NONE)
+
+            while not self.at_end():
+                if not self.match_token(TokenChoice.current, [TokenTag.OP_LOGIC_OR]):
+                    break
+
+                self.consume_token([])
+
+                lhs = ast.Binary(lhs, self.parse_and(), ast.OpType.OP_LOGIC_OR)
+
+            return lhs
+
+        return self.parse_or()
+
+    def parse_declaration(self) -> ast.Stmt:
+        self.consume_token([TokenTag.TYPENAME_VOID, TokenTag.TYPENAME_CHAR, TokenTag.TYPENAME_INT])
+
+        temp_typename = TYPENAME_TABLE.get(self.peek_prev()[0])
+        temp_name = self.peek_curr()[0]
+
+        self.consume_token([])
+
+        if self.match_token(TokenChoice.current, [TokenTag.OP_ASSIGN]):
+            self.consume_token([])
+            temp_rhs = self.parse_expr()
+            self.consume_token([TokenTag.SEMICOLON])
+
+            return ast.Variable(temp_name, temp_typename, temp_rhs)
+        elif self.match_token(TokenChoice.current, [TokenTag.PAREN_OPEN]):
+            temp_func_params = self.parse_params()
+            temp_func_body = self.parse_block()
+
+            return ast.FunctionDecl(temp_name, temp_typename, temp_func_params, temp_func_body)
+        
+        raise SyntaxError('Invalid token for declaration!')
+
+    def parse_variable(self) -> ast.Stmt:
+        self.consume_token([TokenTag.TYPENAME_VOID, TokenTag.TYPENAME_CHAR, TokenTag.TYPENAME_INT])
+
+        temp_typename = TYPENAME_TABLE.get(self.peek_prev()[0]) or ast.DataType.UNKNOWN
+        temp_name = self.peek_curr()[0]
+
+        self.consume_token([])
+        self.consume_token([TokenTag.OP_ASSIGN])
+
+        temp_rhs = self.parse_expr()
+        self.consume_token([TokenTag.SEMICOLON])
+
+        return ast.Variable(temp_name, temp_typename, temp_rhs)
+
+    def parse_block(self) -> ast.Stmt:
+        self.consume_token([TokenTag.BRACE_OPEN])
+
+        temp_stmts = []
+
+        while not self.at_end():
+            if self.peek_curr() is None:
+                raise SyntaxError('Missing closing brace for block.')
+
+            if self.match_token([TokenTag.BRACE_CLOSE]):
+                self.consume_token([])
+                break
+
+            temp_stmts.append(self.parse_nested_stmt())
+
+        return ast.Block(temp_stmts)
+
+    def parse_nested_stmt(self) -> ast.Stmt:
+        temp_lexeme = self.peek_curr()[0]
+        
+        if self.match_token(TokenChoice.current, [TokenTag.KEYWORD])  and temp_lexeme == 'if':
+            return self.parse_if()
+        elif self.match_token(TokenChoice.current, [TokenTag.KEYWORD]) and temp_lexeme == 'return':
+            return self.parse_return()
+        elif not self.match_token(TokenChoice.current, [TokenTag.TYPENAME_VOID, TokenTag.TYPENAME_CHAR, TokenTag.TYPENAME_INT]):
+            return self.parse_variable()
+        else:
+            return self.parse_expr_stmt()
+
+    def parse_expr_stmt(self) -> ast.Stmt:
+        temp_inner_expr = self.parse_expr()
+        self.consume_token([TokenTag.SEMICOLON])
+        return ast.ExprStmt(temp_inner_expr, ast.OpType.OP_NONE)
+
+    def parse_params(self) -> list[tuple[ast.DataType, str]]:
+        self.consume_token([TokenTag.PAREN_OPEN])
+
+        temp_params = []
+
+        if self.match_token(TokenChoice.current, [TokenTag.PAREN_CLOSE]):
+            return temp_params
+
+        while True:
+            if self.peek_curr() is None:
+                raise SyntaxError('Missing closing parenthesis for parameter list!')
+
+            self.consume_token([TokenTag.TYPENAME_CHAR, TokenTag.TYPENAME_INT])
+
+            temp_param_typename = TYPENAME_TABLE.get(self.peek_prev()[0])
+            temp_param_name = self.peek_curr()[0]
+
+            temp_params.append((temp_param_typename, temp_param_name))
+
+            if self.match_token(TokenChoice.current, [TokenTag.PAREN_CLOSE]):
+                self.consume_token([])
+                break
+            elif self.match_token(TokenChoice.current, [TokenTag.COMMA]):
+                self.consume_token([])
+
+        return temp_params
+
+    def parse_args(self) -> list[ast.Expr]:
+        self.consume_token([TokenTag.PAREN_OPEN])
+
+        temp_args = []
+
+        if self.match_token(TokenChoice.current, [TokenTag.PAREN_CLOSE]):
+            return temp_args
+
+        while True:
+            if self.peek_curr() is None:
+                raise SyntaxError('Missing closing parenthesis for argument list!')
+
+            temp_args.append(self.parse_expr())
+
+            if self.match_token(TokenChoice.current, [TokenTag.PAREN_CLOSE]):
+                self.consume_token([])
+                break
+            elif self.match_token(TokenChoice.current, [TokenTag.COMMA]):
+                self.consume_token([])
+
+        return temp_args
+
+    def parse_if(self) -> ast.Stmt:
+        self.consume_token([])
+        self.consume_token([TokenTag.PAREN_OPEN])
+
+        temp_cond = self.parse_expr()
+
+        self.consume_token([TokenTag.PAREN_CLOSE])
+
+        temp_main_block = self.parse_block()
+
+        if self.match_token(TokenChoice.current, [TokenTag.KEYWORD]) and self.peek_curr()[0] == 'else':
+            return ast.If(temp_cond, temp_main_block, self.parse_else())
+
+        return ast.If(temp_cond, temp_main_block, None)
+
+    def parse_else(self) -> ast.Stmt:
+        self.consume_token([]) # NOTE skip 'else' since I only care about its block!
+
+        return self.parse_block()
+
+    def parse_return(self) -> ast.Stmt:
+        self.consume_token([]) # NOTE skip 'return' since the expr matters most!
+
+        temp_result_expr = self.parse_expr()
+        self.consume_token([TokenTag.SEMICOLON])
+
+        return ast.Return(temp_result_expr)
+
+    def parse_all(self) -> ParseResult:
+        stmts: list[ast.Stmt] = []
+
+        try:
+            while not self.at_end():
+                stmts.append(self.parse_declaration())
+        except SyntaxError as e:
+            self.error_count += 1
+            print(f'Parse Error [{self.prev[1]}]: {e}')
+
+        return (self.error_count == 0, stmts)
