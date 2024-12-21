@@ -1,13 +1,13 @@
 # pyCC (fork)
-A basic C compiler written in Python. Supports a teeny tiny part of C99.
+A basic C compiler written in Python. Will support a teeny tiny part of C89.
 
-Currently only supports returning values.
 ## Usage:
 ```sh
-./driver <input_file>.c
+python3 ./pyCC/pyCC.py -S file.c
 ```
 
 ## TODO:
- - Test and fix parser!
- - Create and test AST printer!
- - Create code generator by the ASTVisitor!
+- [x] Test and fix parser!
+- [ ] Create IR generator by the ASTVisitor!
+- [ ] Create ASM generator to convert from IR.
+- [ ] Compare ASM output with GCC -std=c89?
