@@ -7,7 +7,7 @@ from enum import Enum, auto
 
 ## Types & Aliases ##
 
-OPERATOR_SYMBOLS = '+-*/=<>'
+OPERATOR_SYMBOLS = '+-*/!=&|<>'
 
 class TokenType(Enum):
     SPACING = auto()
@@ -105,6 +105,7 @@ class Lexer:
         self.types_table = typenames
         self.operator_table = operators
         self.source_view: str = None
+        self.token_hops: list[int] = []
         self.pos: int = 0
         self.limit: int = 0
         self.line: int = 1;
@@ -117,10 +118,22 @@ class Lexer:
         self.line = 1
         self.column = 1
 
+    def record_hop(self, hop_span: int):
+        self.token_hops.append(hop_span)
+
+    def unwind_hop(self):
+        hop_n = len(self.token_hops)
+
+        if hop_n == 0:
+            return
+
+        self.pos -= self.token_hops[hop_n - 1]
+        self.token_hops.pop()
+
     def update_tracked_loc(self, symbol: str) -> None:
         if symbol[0] == '\n':
             self.line += 1
-            self.column = 1
+            self.column = 0
         else:
             self.column += 1
 
@@ -140,7 +153,9 @@ class Lexer:
             self.update_tracked_loc(c)
             self.pos += 1
             token_length += 1
-        
+
+        self.record_hop(token_length)
+
         return (
             self.source_view[token_start: token_start + token_length],
             (self.line, self.column),
@@ -162,6 +177,8 @@ class Lexer:
             self.pos += 1
             token_length += 1
 
+        self.record_hop(token_length + 2)
+
         return (
             self.source_view[token_start: token_start + token_length],
             (self.line, self.column - token_length),
@@ -172,7 +189,8 @@ class Lexer:
         token_start = self.pos
         self.pos += 1
 
-        self.column += 1
+        self.record_hop(1)
+        self.update_tracked_loc(self.source_view[self.pos - 1])
 
         return (
             self.source_view[token_start: token_start + 1],
@@ -191,6 +209,8 @@ class Lexer:
         self.update_tracked_loc(maybe_closing_quote)
 
         self.pos += 1
+
+        self.record_hop(3)
 
         if maybe_closing_quote != '\'':
             return ('\0', (self.line, self.column), TokenType.UNKNOWN)
@@ -214,6 +234,8 @@ class Lexer:
             self.update_tracked_loc(c)
             self.pos += 1
             token_length += 1
+
+        self.record_hop(token_length)
 
         lexeme = self.source_view[token_start: token_start + token_length]
         token_type = TokenType.UNKNOWN
@@ -249,6 +271,8 @@ class Lexer:
             self.pos += 1
             token_length += 1
 
+        self.record_hop(token_length)
+
         return (
             self.source_view[token_start: token_start + token_length],
             (self.line, self.column - token_length),
@@ -268,6 +292,8 @@ class Lexer:
             self.update_tracked_loc(c)
             self.pos += 1
             token_length += 1
+
+        self.record_hop(token_length)
 
         lexeme = self.source_view[token_start: token_start + token_length]
 
@@ -307,7 +333,6 @@ class Lexer:
         elif peeked_c == '\'':
             return self.lex_char()
 
-        
         if match_spacing(peeked_c):
             return self.lex_spacing()
         elif match_alphabetic(peeked_c):
@@ -317,8 +342,8 @@ class Lexer:
         elif match_op_symbol(peeked_c):
             return self.lex_operator()
 
-        bogus_pos = self.pos
         self.pos += 1
+        self.record_hop(1)
 
         self.update_tracked_loc(peeked_c)
         return (

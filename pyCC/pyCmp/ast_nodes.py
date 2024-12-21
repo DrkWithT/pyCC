@@ -4,7 +4,7 @@
 """
 
 from enum import Enum, auto
-from lexer import TokenObj
+from pyCC.pyCmp.lexer import TokenObj
 import pyCC.pyCmp.ast_visitor as pycc_ast_visitor
 
 ## Enums, Types ##
