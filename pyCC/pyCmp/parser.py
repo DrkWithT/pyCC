@@ -110,9 +110,6 @@ class Parser:
             self.consume_token([TokenTag.PAREN_CLOSE])
             return temp
         elif self.match_token(TokenChoice.current, [TokenTag.IDENTIFIER]):
-            # temp = self.peek_curr()
-            # self.consume_token([])
-            # return ast.Literal(temp, ast.DataType.UNKNOWN)
             return self.parse_call_or_name()
 
         raise SyntaxError('Invalid token for literal!')
@@ -343,7 +340,7 @@ class Parser:
 
             self.consume_token([TokenTag.TYPENAME_CHAR, TokenTag.TYPENAME_INT])
 
-            temp_param_typename = TYPENAME_TABLE.get(self.peek_prev()[0])
+            temp_param_typename = TYPENAME_TABLE.get(self.peek_prev()[0]) or ast.DataType.TYPENAME_VOID
             temp_param_name = self.peek_curr()[0]
 
             temp_params.append((temp_param_typename, temp_param_name))

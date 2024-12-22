@@ -40,6 +40,8 @@ class OpType(Enum):
     OP_ASSIGN = auto()
     OP_NONE = auto()
 
+ParamList = list[tuple[DataType, str]]
+
 ## Constants ##
 
 OP_ARITY_TABLE = {
@@ -137,10 +139,7 @@ class Unary(Expr):
     
     def get_inner(self) -> Expr:
         return self.inner
-    
-    def get_op(self) -> OpType:
-        return self.op
-    
+
     def deduce_early_type(self) -> DataType:
         return self.inner.deduce_early_type()
 
@@ -165,9 +164,6 @@ class Binary(Expr):
 
     def get_rhs(self) -> Expr:
         return self.rhs
-
-    def get_op(self) -> OpType:
-        return self.op
 
     def deduce_early_type(self) -> DataType:
         if self.lhs.deduce_early_type() == self.rhs.deduce_early_type():
@@ -206,7 +202,7 @@ class Call(Expr):
         return DataType.UNKNOWN
 
     def get_op_arity(self) -> OpArity:
-        return OpArity.UNARY
+        return OpArity.NOTHING
 
     def get_op_type(self) -> OpType:
         return OpType.OP_CALL
@@ -269,7 +265,7 @@ class Block(Stmt):
         return visitor.visit_block(self)
 
 class FunctionDecl(Stmt):
-    def __init__(self, name: str, result_type: DataType, params: list, body: Stmt):
+    def __init__(self, name: str, result_type: DataType, params: ParamList, body: Stmt):
         super().__init__()
         self.name = name
         self.result_type = result_type
@@ -281,6 +277,9 @@ class FunctionDecl(Stmt):
 
     def get_type(self) -> DataType:
         return self.result_type
+
+    def get_params(self) -> ParamList:
+        return self.params
 
     def get_arity(self) -> int:
         return len(self.params)
@@ -325,7 +324,7 @@ class ExprStmt(Stmt):
         return visitor.visit_expr_stmt(self)
 
 class If(Stmt):
-    def __init__(self, conditional: Expr, body: Stmt, other_body: Stmt):
+    def __init__(self, conditional: Expr, body: Stmt, other_body: Stmt | None):
         super().__init__()
         self.conditional = conditional
         self.body = body
@@ -337,7 +336,7 @@ class If(Stmt):
     def get_if_body(self) -> Stmt:
         return self.body
 
-    def get_alt_body(self) -> Stmt:
+    def get_alt_body(self) -> Stmt | None:
         return self.other_body
 
     def is_expr_stmt(self) -> bool:
