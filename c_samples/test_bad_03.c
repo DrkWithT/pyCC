@@ -9,7 +9,7 @@ int bar() {
 }
 
 int main() {
-    int blah = foo() + 1;
-    int two_bars = bar() + bar();
+    int blah = foo();
+    int ans = bar();
     return 0;
 }

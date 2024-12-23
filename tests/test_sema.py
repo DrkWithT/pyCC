@@ -29,27 +29,27 @@ class SemAnalyzerTester(unittest.TestCase):
                 print(f'Semantic Error:\nCulprit symbol: {sem_err[0]}\nScope of {sem_err[1]}\n{sem_err[2]}\n')
 
             self.assertTrue(len(errors) == 0)
-    
-    # def test_bad_1(self):
-    #     parser = par.Parser()
-    #     checker = sema.SemanticChecker()
 
-    #     with open('./c_samples/test_bad_01.c') as src:
-    #         parser.use_source(src.read())
-    #         ok, ast = parser.parse_all()
+    def test_bad_1(self):
+        parser = par.Parser()
+        checker = sema.SemanticChecker()
 
-    #         self.assertTrue(ok)
+        with open('./c_samples/test_bad_01.c') as src:
+            parser.use_source(src.read())
+            ok, ast = parser.parse_all()
 
-    #         if not ok:
-    #             print('Parsing failed for source 4!')
-    #             return
+            self.assertTrue(ok)
 
-    #         errors = checker.check_ast(ast)
+            if not ok:
+                print('Parsing failed for source 4!')
+                return
 
-    #         for sem_err in errors:
-    #             print(f'Semantic Error:\nCulprit symbol: {sem_err[0]}\nScope of {sem_err[1]}\n{sem_err[2]}\n')
+            errors = checker.check_ast(ast)
 
-    #         self.assertTrue(len(errors) > 0)
+            for sem_err in errors:
+                print(f'Semantic Error:\nCulprit symbol: {sem_err[0]}\nScope of {sem_err[1]}\n{sem_err[2]}\n')
+
+            self.assertTrue(len(errors) > 0)
 
     def test_bad_2(self):
         parser = par.Parser()
@@ -67,29 +67,28 @@ class SemAnalyzerTester(unittest.TestCase):
             for sem_err in errors:
                 print(f'Semantic Error:\nCulprit symbol: {sem_err[0]}\nScope of {sem_err[1]}\n{sem_err[2]}\n')
 
-            # NOTE ignore the parsing error for now since test_bad_02.c should not build anyways.
             self.assertTrue(len(errors) > 0 or not ok)
 
-    # def test_bad_3(self):
-    #     parser = par.Parser()
-    #     checker = sema.SemanticChecker()
+    def test_bad_3(self):
+        parser = par.Parser()
+        checker = sema.SemanticChecker()
 
-    #     with open('./c_samples/test_bad_03.c') as src:
-    #         parser.use_source(src.read())
-    #         ok, ast = parser.parse_all()
+        with open('./c_samples/test_bad_03.c') as src:
+            parser.use_source(src.read())
+            ok, ast = parser.parse_all()
 
-    #         self.assertTrue(ok)
+            self.assertTrue(ok)
 
-    #         if not ok:
-    #             print('Parsing failed for source 4!')
-    #             return
+            if not ok:
+                print('Parsing failed for source 4!')
+                return
 
-    #         errors = checker.check_ast(ast)
+            errors = checker.check_ast(ast)
 
-    #         for sem_err in errors:
-    #             print(f'Semantic Error:\nCulprit symbol: {sem_err[0]}\nScope of {sem_err[1]}\n{sem_err[2]}\n')
+            for sem_err in errors:
+                print(f'Semantic Error:\nCulprit symbol: {sem_err[0]}\nScope of {sem_err[1]}\n{sem_err[2]}\n')
 
-    #         self.assertTrue(len(errors) > 0)
+            self.assertTrue(len(errors) > 0)
 
 if __name__ == '__main__':
     unittest.main()
