@@ -1,7 +1,8 @@
 """
     test_sema.py\n
     Added by DrkWithT\n
-    Unit tests semantic analyzer on 1 positive, 3 negative samples.
+    Unit tests semantic analyzer on 1 positive, 3 negative samples...\n
+    TODO fix false negative in test_bad_03.c case: 'ans' invalid??
 """
 
 import unittest

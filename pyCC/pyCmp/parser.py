@@ -1,7 +1,6 @@
 """
     parser.py\n
     Modified by DrkWithT (Derek Tan) on 12/20/2024\n
-    TODO fix parser to use streaming lexer, recursive descent.\n
     NOTE this will need a type-qualifier & type name parse function.
 """
 

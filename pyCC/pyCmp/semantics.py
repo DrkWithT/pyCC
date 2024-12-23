@@ -201,7 +201,6 @@ class SemanticChecker(ASTVisitor):
 
     def visit_call(self, node: nodes.Call) -> ExprInfo:
         call_name = node.get_name()
-        call_type = node.deduce_early_type()
         call_argv = node.get_args()
 
         call_info_opt = self.scopes.get_global_scope().get(call_name)
@@ -214,6 +213,7 @@ class SemanticChecker(ASTVisitor):
             ))
             return (call_name, nodes.DataType.VOID)
 
+        result_type = call_info_opt.data_type
         param_types = call_info_opt.extras["ptypes"]
         call_arity = call_info_opt.extras["arity"]
         argc = len(call_argv)
@@ -231,7 +231,7 @@ class SemanticChecker(ASTVisitor):
 
             arg_name = '<name>' if arg.get_op_type() == nodes.OpType.OP_NONE else arg.data[0][0] # NOTE get identifier if literal...
             arg_type = arg.deduce_early_type()
-            arg_type = arg_type if arg_type != nodes.DataType.UNKNOWN else self.scopes.get_current_scope().get(arg_name) or nodes.DataType.VOID
+            arg_type = arg_type if arg_type != nodes.DataType.UNKNOWN else self.scopes.get_current_scope().get(arg_name).data_type or nodes.DataType.VOID
 
             if arg_type != param_types[arg_i]:
                 self.errors.append((
@@ -241,7 +241,7 @@ class SemanticChecker(ASTVisitor):
                 ))
                 return (call_name, nodes.DataType.VOID)
 
-        return (call_name, call_type)
+        return (call_name, result_type)
 
     def visit_variable_decl(self, node: nodes.Variable):
         var_name = node.get_name()
