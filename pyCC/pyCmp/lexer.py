@@ -188,17 +188,18 @@ class Lexer:
     def lex_single(self, token_type: TokenType) -> TokenObj:
         token_start = self.pos
         self.pos += 1
+        self.update_tracked_loc(self.source_view[self.pos - 1])
 
         self.record_hop(1)
-        self.update_tracked_loc(self.source_view[self.pos - 1])
 
         return (
             self.source_view[token_start: token_start + 1],
-            (self.line, self.column),
+            (self.line, self.column - 1),
             token_type
         )
 
     def lex_char(self) -> TokenObj:
+        self.update_tracked_loc(self.source_view[self.pos])
         self.pos += 1
 
         token_start = self.pos
@@ -207,17 +208,16 @@ class Lexer:
 
         maybe_closing_quote = self.source_view[self.pos]
         self.update_tracked_loc(maybe_closing_quote)
-
         self.pos += 1
 
         self.record_hop(3)
 
         if maybe_closing_quote != '\'':
-            return ('\0', (self.line, self.column), TokenType.UNKNOWN)
+            return ('\0', (self.line, self.column - 3), TokenType.UNKNOWN)
 
         return (
             self.source_view[token_start: token_start + 1],
-            (self.line, self.column - 1),
+            (self.line, self.column - 3),
             TokenType.LITERAL_CHAR
         )
 
@@ -264,10 +264,11 @@ class Lexer:
             if not match_numeric(c):
                 break
 
+            self.update_tracked_loc(c)
+
             if c == '.':
                 dots += 1
 
-            self.update_tracked_loc(c)
             self.pos += 1
             token_length += 1
 
@@ -344,8 +345,8 @@ class Lexer:
 
         self.pos += 1
         self.record_hop(1)
-
         self.update_tracked_loc(peeked_c)
+
         return (
             peeked_c,
             (self.line, self.column - 1),

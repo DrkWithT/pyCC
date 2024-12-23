@@ -132,7 +132,7 @@ class SemanticChecker(ASTVisitor):
                     self.errors.append((
                         opt_token[0],
                         self.current_scope_name,
-                        f'Literals of type {name_type.name} or those undefined are forbidden!'
+                        f'Literals of undefined names are forbidden!'
                     ))
             else:
                 result_type = node.deduce_early_type()
@@ -199,8 +199,49 @@ class SemanticChecker(ASTVisitor):
 
         return ('', nodes.DataType.VOID)
 
-    def visit_call(self, node: nodes.Call) -> tuple[str, nodes.DataType]:
-        pass # TODO 7
+    def visit_call(self, node: nodes.Call) -> ExprInfo:
+        call_name = node.get_name()
+        call_type = node.deduce_early_type()
+        call_argv = node.get_args()
+
+        call_info_opt = self.scopes.get_global_scope().get(call_name)
+
+        if not call_info_opt:
+            self.errors.append((
+                call_name,
+                self.current_scope_name,
+                f'Undefined function name \"{call_name}\"!'
+            ))
+            return (call_name, nodes.DataType.VOID)
+
+        param_types = call_info_opt.extras["ptypes"]
+        call_arity = call_info_opt.extras["arity"]
+        argc = len(call_argv)
+
+        if argc != call_arity:
+            self.errors.append((
+                f'{call_name}(<args>)',
+                self.current_scope_name,
+                f'Invalid argument count for function {call_name}, expected {argc}!'
+            ))
+            return ('', nodes.DataType.VOID)
+
+        for arg_i in range(argc):
+            arg = call_argv[arg_i]
+
+            arg_name = '<name>' if arg.get_op_type() == nodes.OpType.OP_NONE else arg.data[0][0] # NOTE get identifier if literal...
+            arg_type = arg.deduce_early_type()
+            arg_type = arg_type if arg_type != nodes.DataType.UNKNOWN else self.scopes.get_current_scope().get(arg_name) or nodes.DataType.VOID
+
+            if arg_type != param_types[arg_i]:
+                self.errors.append((
+                    arg_name,
+                    self.current_scope_name,
+                    f'Invalid arg #{arg_i} passed to function {call_name}, invalid type.'
+                ))
+                return (call_name, nodes.DataType.VOID)
+
+        return (call_name, call_type)
 
     def visit_variable_decl(self, node: nodes.Variable):
         var_name = node.get_name()
@@ -223,15 +264,16 @@ class SemanticChecker(ASTVisitor):
                 ))
             else:
                 self.scopes.get_current_scope()[var_name] = SymbolNote(self.scopes.at_global_scope(), SymbolRole.ROLE_VAR, var_type, None);
-        elif var_type == nodes.DataType.INT:
+        elif var_type == nodes.DataType.INT and rhs_type != nodes.DataType.UNKNOWN and rhs_type != nodes.DataType.VOID:
             self.scopes.get_current_scope()[var_name] = SymbolNote(self.scopes.at_global_scope(), SymbolRole.ROLE_VAR, var_type, None);
-        elif var_type == nodes.DataType.CHAR:
+        elif var_type == nodes.DataType.CHAR and rhs_type != nodes.DataType.UNKNOWN and rhs_type != nodes.DataType.VOID:
             self.scopes.get_current_scope()[var_name] = SymbolNote(self.scopes.at_global_scope(), SymbolRole.ROLE_VAR, var_type, None);
-        else: # NOTE: handle invalid types in var. decls: VOID
+        else:
+            # NOTE: handle invalid types in var. decls: VOID
             self.errors.append((
                 '<expr>',
                 self.current_scope_name,
-                f'Invalid type "void" within variable declaration of {var_name}!'
+                f'Invalid assigned type of {rhs_type} in variable declaration of {var_name}!'
             ))
 
     def visit_block(self, node: nodes.Block):

@@ -361,6 +361,7 @@ class Parser:
         temp_args = []
 
         if self.match_token(TokenChoice.current, [TokenTag.PAREN_CLOSE]):
+            self.consume_token([])
             return temp_args
 
         while True:

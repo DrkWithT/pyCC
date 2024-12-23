@@ -1,6 +1,7 @@
 """
     ast_nodes.py\n
-    Modified by DrkWithT (Derek Tan)
+    Modified by DrkWithT (Derek Tan)\n
+    NOTE Should add ExprType enum to discern arg vs. param types later.
 """
 
 from enum import Enum, auto
@@ -110,7 +111,7 @@ class Literal(Expr):
             self.data_type = data_type
         else:
             self.arr_flag = False
-            self.data_type = DataType.DTYPE_UNKNOWN
+            self.data_type = DataType.UNKNOWN
 
     def is_array(self) -> bool:
         return self.arr_flag
