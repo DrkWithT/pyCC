@@ -297,6 +297,9 @@ class SemanticChecker(ASTVisitor):
         self.scopes.create_new_scope()
         self.current_scope_name = func_name
 
+        for param in func_param_v:
+            self.scopes.get_current_scope()[param[1]] = SymbolNote(False, SymbolRole.ROLE_VAR, param[0], None)
+
         node.get_body().accept_visitor(self)
 
         self.scopes.pop_current_scope()
