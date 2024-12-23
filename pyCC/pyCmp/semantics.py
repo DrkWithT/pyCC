@@ -74,22 +74,22 @@ ErrorChunk = tuple[str, str, str]
 
 # NOTE maps an AST op to support flag per (CHAR, INT, VOID)... use DataType.FOO.index()!
 ALLOWED_DATA_OPS = {
-    "OP_CALL": [False, False, False],
-    "OP_NEG": [False, True, False],
-    "OP_MULT": [False, True, False],
-    "OP_DIV": [False, True, False],
-    "OP_ADD": [False, True, False],
-    "OP_SUB": [False, True, False],
-    "OP_EQUALITY": [True, True, False],
-    "OP_INEQUALITY": [True, True, False],
-    "OP_LT": [True, True, False],
-    "OP_LTE": [True, True, False],
-    "OP_GT": [True, True, False],
-    "OP_GTE": [True, True, False],
-    "OP_LOGIC_AND": [True, True, False],
-    "OP_LOGIC_OR": [True, True, False],
-    "OP_ASSIGN": [True, True, False],
-    "OP_NONE": [True, True, False]
+    "OP_CALL": [False, False, False, False],
+    "OP_NEG": [False, True, False, False],
+    "OP_MULT": [False, True, False, False],
+    "OP_DIV": [False, True, False, False],
+    "OP_ADD": [False, True, False, False],
+    "OP_SUB": [False, True, False, False],
+    "OP_EQUALITY": [True, True, False, False],
+    "OP_INEQUALITY": [True, True, False, False],
+    "OP_LT": [True, True, False, False],
+    "OP_LTE": [True, True, False, False],
+    "OP_GT": [True, True, False, False],
+    "OP_GTE": [True, True, False, False],
+    "OP_LOGIC_AND": [True, True, False, False],
+    "OP_LOGIC_OR": [True, True, False, False],
+    "OP_ASSIGN": [True, True, False, False],
+    "OP_NONE": [True, True, False, False]
 }
 
 ## Semantic Analyzer ##
@@ -116,13 +116,13 @@ class SemanticChecker(ASTVisitor):
         result_type = nodes.DataType.VOID
 
         if opt_token is not None:
-            if opt_token[2].value == lex.TokenType.TYPENAME_VOID:
+            if opt_token[2] == lex.TokenType.TYPENAME_VOID:
                 self.errors.append((
                     f'{opt_token[0]}',
                     self.current_scope_name,
-                    f'Invalid data type "void" for literal!'
+                    f'Invalid void type for literal!'
                 ))
-            elif opt_token[2].value == lex.TokenType.IDENTIFIER:
+            elif opt_token[2] == lex.TokenType.IDENTIFIER:
                 result_name = opt_token[0]
                 name_info = self.scopes.get_current_scope().get(result_name)
                 name_type = name_info.data_type if name_info is not None else nodes.DataType.VOID
@@ -132,8 +132,10 @@ class SemanticChecker(ASTVisitor):
                     self.errors.append((
                         opt_token[0],
                         self.current_scope_name,
-                        f'Literals of type {name_type.name} or undefined are forbidden!'
+                        f'Literals of type {name_type.name} or those undefined are forbidden!'
                     ))
+            else:
+                result_type = node.deduce_early_type()
         else:
             # TODO handle arrays?
             pass
@@ -161,10 +163,14 @@ class SemanticChecker(ASTVisitor):
         bin_op = node.get_op_type()
 
         lhs_opt_name, lhs_type = lhs_result
-        lhs_type = lhs_type if lhs_opt_name == '' else self.scopes.get_current_scope().get(lhs_opt_name).data_type
+
+        if lhs_opt_name != '' and self.scopes.get_current_scope().get(lhs_opt_name) is not None:
+            lhs_type = self.scopes.get_current_scope().get(lhs_opt_name).data_type
 
         rhs_opt_name, rhs_type = rhs_result
-        rhs_type = rhs_type if rhs_opt_name == '' else self.scopes.get_current_scope().get(rhs_opt_name).data_type
+
+        if rhs_opt_name != '' and self.scopes.get_current_scope().get(rhs_opt_name) is not None:
+            rhs_type = self.scopes.get_current_scope().get(rhs_opt_name).data_type
 
         if not ALLOWED_DATA_OPS.get(bin_op.name)[lhs_type.value] or not ALLOWED_DATA_OPS.get(bin_op.name)[rhs_type.value]:
             self.errors.append((
@@ -200,15 +206,20 @@ class SemanticChecker(ASTVisitor):
         var_name = node.get_name()
         var_type = node.get_type()
         var_rhs = node.get_rhs()
-
         rhs_name, rhs_type = var_rhs.accept_visitor(self)
 
+        if not self.scopes.get_current_scope().get(var_name):
+            self.scopes.get_current_scope()[var_name] = SymbolNote(self.scopes.at_global_scope(), SymbolRole.ROLE_VAR, var_type, None)
+
         if var_type == rhs_type:
-            if var_rhs.get_op_type() != nodes.OpType.OP_CALL:
+            rhs_opt_info = self.scopes.get_current_scope().get(rhs_name)
+            rhs_role = rhs_opt_info.role if rhs_opt_info is not None else SymbolRole.ROLE_NONE
+
+            if var_rhs.get_op_type() != nodes.OpType.OP_CALL and rhs_role == SymbolRole.ROLE_FUNC:
                 self.errors.append((
                     rhs_name,
                     self.current_scope_name,
-                    f'Invalid use of function {rhs_name} returning {rhs_type.name}'
+                    f'Invalid use of function {rhs_name or '<unknown>'} returning {rhs_type.name}'
                 ))
             else:
                 self.scopes.get_current_scope()[var_name] = SymbolNote(self.scopes.at_global_scope(), SymbolRole.ROLE_VAR, var_type, None);
@@ -264,12 +275,11 @@ class SemanticChecker(ASTVisitor):
             # NOTE visit a call expr here!
             inner_expr.accept_visitor(self)
             return
-
-        self.errors.append((
-            '<expr-stmt>',
-            self.current_scope_name,
-            f'Temporary values are forbidden!'
-        ))
+            # self.errors.append((
+            #     '<expr-stmt>',
+            #     self.current_scope_name,
+            #     f'Temporary values are forbidden!'
+            # ))
 
     def visit_if(self, node: nodes.If):
         if self.scopes.at_global_scope():

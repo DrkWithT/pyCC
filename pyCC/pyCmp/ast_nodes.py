@@ -12,10 +12,10 @@ import pyCC.pyCmp.ast_visitor as pycc_ast_visitor
 TreeVisitor = pycc_ast_visitor.ASTVisitor
 
 class DataType(Enum):
-    CHAR = auto()
-    INT = auto()
-    VOID = auto()
-    UNKNOWN = auto()
+    CHAR = 0
+    INT = 1
+    VOID = 2
+    UNKNOWN = 3
 
 class OpArity(Enum):
     UNARY = auto()
@@ -100,16 +100,15 @@ class Literal(Expr):
 
         data_0, data_1 = data;
 
+        self.data = data
+
         if data_0 is not None:
-            self.data = data_0
             self.arr_flag = False
             self.data_type = data_type
         elif data_1 is not None:
-            self.data = data_1
             self.arr_flag = True
             self.data_type = data_type
         else:
-            self.data = None
             self.arr_flag = False
             self.data_type = DataType.DTYPE_UNKNOWN
 
