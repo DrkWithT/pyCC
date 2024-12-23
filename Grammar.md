@@ -7,8 +7,8 @@
  1. Simple types of variables e.g `char, int`.
  2. Simple arithmetic, specifically MDAS
  3. Basic control flow
- 4. Simple arrays e.g `char[N], int[N]`
- 5. Function calls
+ 4. Function calls
+ 5. Simple arrays e.g `char[N], int[N]`
  6. Simple structs
  7. Type qualifiers
     - `const`?

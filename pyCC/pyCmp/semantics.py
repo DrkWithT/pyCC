@@ -268,18 +268,12 @@ class SemanticChecker(ASTVisitor):
             ))
             return
 
-        inner_expr = node.get_inner()
-        inner_op = inner_expr.get_op_type()
-
-        if inner_op == nodes.OpType.OP_CALL:
-            # NOTE visit a call expr here!
-            inner_expr.accept_visitor(self)
-            return
-            # self.errors.append((
-            #     '<expr-stmt>',
-            #     self.current_scope_name,
-            #     f'Temporary values are forbidden!'
-            # ))
+        node.get_inner().accept_visitor(self)
+        # self.errors.append((
+        #     '<expr-stmt>',
+        #     self.current_scope_name,
+        #     f'Temporary values are forbidden!'
+        # ))
 
     def visit_if(self, node: nodes.If):
         if self.scopes.at_global_scope():
