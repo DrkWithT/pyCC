@@ -10,7 +10,6 @@ int bar() {
 
 int main() {
     int blah = foo() + 1;
-    bar() = 43;
-
+    int two_bars = bar() + bar();
     return 0;
 }

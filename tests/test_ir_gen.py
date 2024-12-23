@@ -4,4 +4,9 @@
     Unit testing for IR generator from AST.
 """
 
-# TODO
+import unittest
+
+class IRGenTester(unittest.TestCase):
+    def test_dud(self):
+        # TODO replace with real tests once IR is done!
+        self.assertTrue(True)
