@@ -112,10 +112,7 @@ class SemanticChecker(ASTVisitor):
         return self.errors
 
     def eject_semantic_info(self) -> SemanticsTable:
-        temp = self.semantic_info
-        self.semantic_info.clear()
-
-        return temp
+        return self.semantic_info
 
     def visit_literal(self, node: nodes.Literal) -> ExprInfo:
         opt_token, opt_other = node.get_data()

@@ -12,8 +12,6 @@ class IRType(Enum):
     LABEL = auto()         # <name>:
     CMP = auto()           # Cmp <arg0> <arg1>
     JUMP = auto()          # Jump <name>
-    FRAME_STARTER = auto() # StartFrame <N>
-    FRAME_ENDER = auto()   # EndFrame <N>
     ARGV_PUSH = auto()     # PushArg <arg>
     FUNC_CALL = auto()     # Call <name>
     ADDR_DECLARE = auto()  # <addr> = <expr>
@@ -39,10 +37,10 @@ class IROp(Enum):
 CMP_INVERSES = {
     "COMPARE_EQ": IROp.COMPARE_NEQ,
     "COMPARE_NEQ": IROp.COMPARE_EQ,
-    "COMPARE_LT": IROp.GTE,
-    "COMPARE_LTE": IROp.GT,
-    "COMPARE_GT": IROp.LTE,
-    "COMPARE_GTE": IROp.LT
+    "COMPARE_LT": IROp.COMPARE_GTE,
+    "COMPARE_LTE": IROp.COMPARE_GT,
+    "COMPARE_GT": IROp.COMPARE_LTE,
+    "COMPARE_GTE": IROp.COMPARE_LT
 }
 
 DATATYPE_SIZES = {

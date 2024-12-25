@@ -38,20 +38,6 @@ class IRJump(ir_types.IRStep):
         return ir_types.IRType.JUMP
 
 @dataclasses.dataclass
-class IRFrameStart(ir_types.IRStep):
-    byte_n: int
-
-    def get_ir_type(self) -> ir_types.IRType:
-        return ir_types.IRType.FRAME_STARTER
-
-@dataclasses.dataclass
-class IRFrameEnd(ir_types.IRStep):
-    byte_n: int
-
-    def get_ir_type(self) -> ir_types.IRType:
-        return ir_types.IRType.FRAME_ENDER
-
-@dataclasses.dataclass
 class IRPushArg(ir_types.IRStep):
     arg: str | int
 
@@ -88,6 +74,7 @@ class IREmitter(ASTVisitor):
     AddrUsageTable = dict[str, bool] # NOTE format is "a{num}": bool.
 
     addr_table: AddrUsageTable = None
+    name_to_addr_table: dict = None
     jump_label_i: int = None
     temp_labels: list[str] = []
     frame_sizes: list[int] = None
@@ -100,16 +87,15 @@ class IREmitter(ASTVisitor):
             "B": False,
             "C": False
         }
+        self.name_to_addr_table = {
+            "A": None,
+            "B": None,
+            "C": None
+        }
         self.jump_label_i = 0
         self.temp_labels = []
         self.frame_sizes = []
         self.results = []
-
-    def eject_new_ir(self) -> ir_types.StepList:
-        temp = self.results
-        self.results.clear()
-
-        return temp
 
     def toggle_addr_usage(self, id: str):
         # NOTE an IR address is "used" during initialization or operations.
@@ -160,7 +146,7 @@ class IREmitter(ASTVisitor):
         for stmt in ast:
             stmt.accept_visitor(self)
 
-        return self.eject_new_ir()
+        return self.results
 
     def visit_literal(self, node: ast.Expr) -> tuple[bool, "any"]:
         # NOTE literal_token: Literal.LiteralData & literal_arrtype: Literal.ArrayType
@@ -169,11 +155,26 @@ class IREmitter(ASTVisitor):
         if literal_token is not None:
             # TODO use allocation of IR address...
             lexeme: str = literal_token[0]
-            raw_value: int = int(lexeme) if literal_token[2] == TokenType.LITERAL_INT else ord(lexeme[1])
+            # raw_value: int = int(lexeme) if literal_token[2] == TokenType.LITERAL_INT else ord(lexeme[0])
+            raw_value = 0
             value_addr = self.allocate_addr()
-            self.results.append(
-                IRLoadConst(value_addr, raw_value)
-            )
+
+            if literal_token[2] == TokenType.LITERAL_INT:
+                raw_value = int(lexeme)
+                self.results.append(
+                    IRLoadConst(value_addr, raw_value)
+                )
+            elif literal_token[2] == TokenType.LITERAL_CHAR:
+                raw_value = ord(lexeme[0])
+                self.results.append(
+                    IRLoadConst(value_addr, raw_value)
+                )
+            elif literal_token[2] == TokenType.IDENTIFIER:
+                temp = self.name_to_addr_table.get(lexeme)
+                raw_value = temp or 'aX'
+                self.results.append(
+                    IRLoadConst(value_addr, raw_value)
+                )
             return value_addr
         elif literal_arrtype is not None:
             # TODO implement array handling... allocate N addresses where N = arr.length!
@@ -195,8 +196,8 @@ class IREmitter(ASTVisitor):
         return None
 
     def visit_binary(self, node: ast.Expr):
-        arg0_addr = node.get_lhs().accept_visitor()
-        arg1_addr = node.get_rhs().accept_visitor()
+        arg0_addr = node.get_lhs().accept_visitor(self)
+        arg1_addr = node.get_rhs().accept_visitor(self)
         op = node.get_op_type()
 
         dest_addr = self.allocate_addr()
@@ -232,14 +233,14 @@ class IREmitter(ASTVisitor):
 
     def visit_variable_decl(self, node: ast.Stmt):
         var_addr = self.allocate_addr()
+        self.name_to_addr_table[node.get_name()] = var_addr
         rhs_addr: str = node.get_rhs().accept_visitor(self)
         self.results.append(IRAssign(var_addr, ir_types.IROp.NOP, [rhs_addr]))
         return var_addr
 
     def visit_block(self, node: ast.Stmt):
         for stmt in node.get_stmts():
-            if stmt.is_expr_stmt():
-                stmt.accept_visitor(self)
+            stmt.accept_visitor(self)
 
     def visit_function_decl(self, node: ast.Stmt):
         func_name: str = node.get_name()
@@ -247,14 +248,9 @@ class IREmitter(ASTVisitor):
 
         self.results.append(IRLabel(func_name))
 
-        approx_frame_sz = len(func_param_v) * 4
-        approx_frame_padding = (approx_frame_sz & 0xF)
-        approx_frame_sz = approx_frame_sz if approx_frame_padding == 0 else approx_frame_sz + approx_frame_sz
-
-        self.results.append(IRFrameStart(approx_frame_sz))
-
         for param in func_param_v:
             param_addr = self.allocate_addr()
+            self.name_to_addr_table[param[1]] = param_addr
             self.results.append(IRLoadConst(param_addr, 0))
 
         ret_label = self.generate_next_label()
@@ -263,8 +259,8 @@ class IREmitter(ASTVisitor):
         node.get_body().accept_visitor(self)
 
         self.results.append(IRLabel(ret_label))
-        self.results.append(IRFrameEnd(approx_frame_sz))
         self.temp_labels.clear()
+        self.name_to_addr_table.clear()
 
     def visit_expr_stmt(self, node: ast.Stmt):
         op = node.get_inner().get_op_type()
@@ -285,12 +281,12 @@ class IREmitter(ASTVisitor):
         # NOTE if negation of condition, then go to falsy block. Otherwise fall through truthy block.
         self.results.append(IRCmp(ir_types.IROp.COMPARE_EQ, cond_addr, 0))
         self.results.append(IRJump(falsy_label))
-        truthy_body.accept_visitor()
+        truthy_body.accept_visitor(self)
         self.results.append(IRJump(truthy_label))
         self.temp_labels.pop()
 
         self.results.append(IRLabel(falsy_label))
-        falsy_body.accept_visitor()
+        falsy_body.accept_visitor(self)
         self.results.append(IRLabel(truthy_label))
         self.temp_labels.pop()
 

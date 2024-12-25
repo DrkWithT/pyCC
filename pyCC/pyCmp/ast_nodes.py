@@ -265,7 +265,7 @@ class Block(Stmt):
         return visitor.visit_block(self)
 
 class FunctionDecl(Stmt):
-    def __init__(self, name: str, result_type: DataType, params: ParamList, body: Stmt):
+    def __init__(self, name: str, result_type: DataType, params: ParamList, body: list[Stmt]):
         super().__init__()
         self.name = name
         self.result_type = result_type
