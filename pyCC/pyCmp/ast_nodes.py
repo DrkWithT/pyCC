@@ -136,7 +136,7 @@ class Unary(Expr):
         super().__init__()
         self.inner = inner
         self.op = op
-    
+
     def get_inner(self) -> Expr:
         return self.inner
 
@@ -312,7 +312,11 @@ class ExprStmt(Stmt):
         return self.outer_op
 
     def is_expr_stmt(self) -> bool:
-        return True
+        """
+            NOTE The name is wrong, as this function should check if this expr-stmt is worth generating as IR. Temporaries are ignored.
+        """
+        inside_op = self.get_inner().get_op_type()
+        return inside_op == OpType.OP_CALL or inside_op == OpType.OP_ASSIGN
 
     def is_declaration(self) -> bool:
         return False

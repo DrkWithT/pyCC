@@ -94,21 +94,28 @@ ALLOWED_DATA_OPS = {
 
 ## Semantic Analyzer ##
 ExprInfo = tuple[str, nodes.DataType]
+SemanticsTable = dict[str, ScopeObj]
 
 class SemanticChecker(ASTVisitor):
     def __init__(self):
         self.scopes = ScopeStore()
         self.current_scope_name: str = 'global'
         self.errors: list[ErrorChunk] = []
-
-    def clear_errors(self):
-        self.errors.clear()
+        self.semantic_info: SemanticsTable = {}
 
     def check_ast(self, tops: list[nodes.Stmt]) -> list[ErrorChunk]:
         for stmt in tops:
             stmt.accept_visitor(self)
 
+        self.semantic_info[".global"] = self.scopes.get_global_scope()
+
         return self.errors
+
+    def eject_semantic_info(self) -> SemanticsTable:
+        temp = self.semantic_info
+        self.semantic_info.clear()
+
+        return temp
 
     def visit_literal(self, node: nodes.Literal) -> ExprInfo:
         opt_token, opt_other = node.get_data()
@@ -222,7 +229,7 @@ class SemanticChecker(ASTVisitor):
             self.errors.append((
                 f'{call_name}(<args>)',
                 self.current_scope_name,
-                f'Invalid argument count for function {call_name}, expected {argc}!'
+                f'Invalid argument count for function {call_name}, expected {call_arity}!'
             ))
             return ('', nodes.DataType.VOID)
 
@@ -302,6 +309,7 @@ class SemanticChecker(ASTVisitor):
 
         node.get_body().accept_visitor(self)
 
+        self.semantic_info[self.current_scope_name] = self.scopes.get_current_scope()
         self.scopes.pop_current_scope()
 
     def visit_expr_stmt(self, node: nodes.ExprStmt):
@@ -314,11 +322,6 @@ class SemanticChecker(ASTVisitor):
             return
 
         node.get_inner().accept_visitor(self)
-        # self.errors.append((
-        #     '<expr-stmt>',
-        #     self.current_scope_name,
-        #     f'Temporary values are forbidden!'
-        # ))
 
     def visit_if(self, node: nodes.If):
         if self.scopes.at_global_scope():
@@ -331,7 +334,7 @@ class SemanticChecker(ASTVisitor):
 
         node.get_conditions().accept_visitor(self)
         node.get_if_body().accept_visitor(self)
-        
+
         else_body_opt = node.get_alt_body()
 
         if else_body_opt is not None:
