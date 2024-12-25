@@ -105,7 +105,7 @@ class SemAnalyzerTester(unittest.TestCase):
             self.assertTrue(ok)
 
             if not ok:
-                print('Parsing failed for source 4!')
+                print('Parsing failed for bad source 1!')
                 return
 
             errors = checker.check_ast(ast)
@@ -124,7 +124,7 @@ class SemAnalyzerTester(unittest.TestCase):
             ok, ast = parser.parse_all()
 
             if not ok:
-                print('Parsing failed for source 4!')
+                print('Parsing failed for bad source 2!')
 
             errors = checker.check_ast(ast)
 
@@ -144,7 +144,28 @@ class SemAnalyzerTester(unittest.TestCase):
             self.assertTrue(ok)
 
             if not ok:
-                print('Parsing failed for source 4!')
+                print('Parsing failed for bad source 3!')
+                return
+
+            errors = checker.check_ast(ast)
+
+            for sem_err in errors:
+                print(f'Semantic Error:\nCulprit symbol: {sem_err[0]}\nScope of {sem_err[1]}\n{sem_err[2]}\n')
+
+            self.assertTrue(len(errors) > 0)
+
+    def test_bad_4(self):
+        parser = par.Parser()
+        checker = sema.SemanticChecker()
+
+        with open('./c_samples/test_bad_04.c') as src:
+            parser.use_source(src.read())
+            ok, ast = parser.parse_all()
+
+            self.assertTrue(ok)
+
+            if not ok:
+                print('Parsing failed for bad source 4!')
                 return
 
             errors = checker.check_ast(ast)
