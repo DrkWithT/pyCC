@@ -10,17 +10,79 @@ import pyCC.pyCmp.semantics as sem
 import pyCC.pyCmp.ir_gen as irgen
 
 class IRGenTester(unittest.TestCase):
-    def test_good_1(self):
+    # def test_good_1(self):
+    #     parser = par.Parser()
+    #     checker = sem.SemanticChecker()
+
+    #     with open('./c_samples/test_01.c') as src:
+    #         parser.use_source(src.read())
+    #         ok, ast = parser.parse_all()
+
+    #         self.assertTrue(ok)
+    #         if not ok:
+    #             print('Parse failed in source 1!')
+    #             return
+            
+    #         errors = checker.check_ast(ast)
+
+    #         for err in errors:
+    #             print(f'Semantic Error:\nCulprit symbol: {err[0]}\nScope of {err[1]}\n{err[2]}\n')
+            
+    #         self.assertTrue(len(errors) == 0)
+    #         if len(errors) > 0:
+    #             print('Semantic validation failed!')
+    #             return
+
+    #         ir_result = irgen.IREmitter(checker.eject_semantic_info()).gen_ir_from_ast(ast)
+
+    #         self.assertTrue(len(ir_result) > 0)
+
+    #         print('Generated IR:\n')
+    #         for step in ir_result:
+    #             print(f'{step}\n')
+
+    # def test_good_2(self):
+    #     parser = par.Parser()
+    #     checker = sem.SemanticChecker()
+
+    #     with open('./c_samples/test_02.c') as src:
+    #         parser.use_source(src.read())
+    #         ok, ast = parser.parse_all()
+
+    #         self.assertTrue(ok)
+    #         if not ok:
+    #             print('Parse failed in source 2!')
+    #             return
+            
+    #         errors = checker.check_ast(ast)
+
+    #         for err in errors:
+    #             print(f'Semantic Error:\nCulprit symbol: {err[0]}\nScope of {err[1]}\n{err[2]}\n')
+            
+    #         self.assertTrue(len(errors) == 0)
+    #         if len(errors) > 0:
+    #             print('Semantic validation failed!')
+    #             return
+
+    #         ir_result = irgen.IREmitter(checker.eject_semantic_info()).gen_ir_from_ast(ast)
+
+    #         self.assertTrue(len(ir_result) > 0)
+
+    #         print('Generated IR:\n')
+    #         for step in ir_result:
+    #             print(f'{step}\n')
+
+    def test_good_3(self):
         parser = par.Parser()
         checker = sem.SemanticChecker()
 
-        with open('./c_samples/test_01.c') as src:
-            parser.use_source(src)
+        with open('./c_samples/test_03.c') as src:
+            parser.use_source(src.read())
             ok, ast = parser.parse_all()
 
             self.assertTrue(ok)
             if not ok:
-                print('Parse failed!')
+                print('Parse failed in source 3!')
                 return
             
             errors = checker.check_ast(ast)
