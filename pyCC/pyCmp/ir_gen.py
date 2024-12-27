@@ -2,7 +2,7 @@
     ir_gen.py\n
     Added by DrkWithT\n
     Defines AST to IR converter.\n
-    TODO add conditional expr negation by recursive traversal and making an edited copy by De-Morgan's Negation Laws.
+    TODO add support for returning values... see visit_return()
 """
 
 import dataclasses
@@ -22,13 +22,9 @@ class IRLabel(ir_types.IRStep):
         return ir_types.IRType.LABEL
 
 @dataclasses.dataclass
-class IRCmp(ir_types.IRStep):
-    op: ir_types.IROp
-    arg0: str | int
-    arg1: str | int
-
+class IRReturn(ir_types.IRStep):
     def get_ir_type(self) -> ir_types.IRType:
-        return ir_types.IRType.CMP
+        return ir_types.IRType.RETURN
 
 @dataclasses.dataclass
 class IRJump(ir_types.IRStep):
@@ -36,6 +32,16 @@ class IRJump(ir_types.IRStep):
 
     def get_ir_type(self) -> ir_types.IRType:
         return ir_types.IRType.JUMP
+
+@dataclasses.dataclass
+class IRJumpIf(ir_types.IRStep):
+    target: str
+    op: ir_types.IROp
+    arg0: str | int
+    arg1: str | int
+
+    def get_ir_type(self) -> ir_types.IRType:
+        return ir_types.IRType.JUMP_IF
 
 @dataclasses.dataclass
 class IRPushArg(ir_types.IRStep):
@@ -148,6 +154,54 @@ class IREmitter(ASTVisitor):
 
         return self.results
 
+    def generate_normal_jump(self, target_label: str, op: ast.OpType, lhs: ast.Expr, rhs: ast.Expr):
+        # NOTE the 3 NOPs for ASSIGN, AND, OR will be handled by caller code instead...
+        op = ir_types.AST_OP_IR_MATCHES.get(op.name)
+        temp = self.allocate_addr() # a2
+        lhs_temp = lhs.accept_visitor(self)
+        rhs_temp = rhs.accept_visitor(self)
+
+        self.results.append(IRAssign(temp, op, [lhs_temp, rhs_temp]))
+        self.results.append(IRJumpIf(target_label, ir_types.IROp.COMPARE_NEQ, 0, temp))
+
+        self.toggle_addr_usage(temp)
+        self.toggle_addr_usage(rhs_temp)
+        self.toggle_addr_usage(lhs_temp)
+
+    def generate_inverse_jump(self, target_label: str, expr: ast.Expr):
+        op = expr.get_op_type()
+        inverse_op = ir_types.AST_OP_IR_INVERSES.get(op.name) or ir_types.IROp.NOP
+        op_arity = expr.get_op_arity()
+
+        if inverse_op != ir_types.IROp.NOP:
+            lhs_temp = expr.get_lhs().accept_visitor(self)
+            rhs_temp = expr.get_rhs().accept_visitor(self)
+
+            self.results.append(IRJumpIf(target_label, inverse_op, lhs_temp, rhs_temp))
+            self.toggle_addr_usage(rhs_temp)
+            self.toggle_addr_usage(lhs_temp)
+        elif op_arity == ast.OpArity.BINARY:
+            temp = self.allocate_addr()
+            lhs_temp = expr.get_lhs().accept_visitor(self)
+            rhs_temp = expr.get_rhs().accept_visitor(self)
+
+            self.results.append(IRAssign(temp, op, [lhs_temp, rhs_temp]))
+            self.results.append(IRJumpIf(target_label, ir_types.IROp.COMPARE_EQ, 0, temp))
+            self.toggle_addr_usage(temp)
+            self.toggle_addr_usage(rhs_temp)
+            self.toggle_addr_usage(lhs_temp)
+        elif op_arity == ast.OpArity.UNARY:
+            inner_temp = expr.get_inner().accept_visitor(self)
+            temp = self.allocate_addr()
+            self.results.append(IRAssign(temp, op, [inner_temp]))
+            self.results.append(IRJumpIf(target_label, ir_types.IROp.COMPARE_EQ, 0, inner_temp))
+            self.toggle_addr_usage(temp)
+            self.toggle_addr_usage(inner_temp)
+        elif op_arity == ast.OpArity.NOTHING:
+            temp = expr.accept_visitor(self)
+            self.results.append(IRJumpIf(target_label, ir_types.IROp.COMPARE_EQ, 0, temp))
+            self.toggle_addr_usage(temp)
+
     def visit_literal(self, node: ast.Expr) -> tuple[bool, "any"]:
         # NOTE literal_token: Literal.LiteralData & literal_arrtype: Literal.ArrayType
         literal_token, literal_arrtype = node.get_data()
@@ -189,22 +243,53 @@ class IREmitter(ASTVisitor):
             self.results.append(IRAssign(dest_addr, ir_types.IROp.NEGATE, [src_addr]))
             self.toggle_addr_usage(src_addr)
             return dest_addr
-        # elif op == ast.OpType.OP_CALL:
-        #     self.results.append(IRCallFunc(node.get_name()))
-        #     return dest_addr
 
         return None
 
     def visit_binary(self, node: ast.Expr):
-        arg0_addr = node.get_lhs().accept_visitor(self)
-        arg1_addr = node.get_rhs().accept_visitor(self)
+        expr_lhs: ast.Expr = node.get_lhs()
+        expr_rhs: ast.Expr = node.get_rhs()
         op = node.get_op_type()
-
         dest_addr = self.allocate_addr()
 
-        self.results.append(IRAssign(dest_addr, ir_types.IROp(op.value), [arg0_addr, arg1_addr]))
-        self.toggle_addr_usage(arg0_addr)
-        self.toggle_addr_usage(arg1_addr)
+        if op == ast.OpType.OP_LOGIC_AND:
+            falsy_label = self.generate_next_label()
+            truthy_label = self.generate_next_label()
+
+            self.generate_inverse_jump(falsy_label, expr_lhs)
+            self.generate_inverse_jump(falsy_label, expr_rhs)
+            self.results.append(IRAssign(dest_addr, ir_types.IROp.NOP, [1]))
+            self.results.append(IRJump(truthy_label))
+
+            self.results.append(IRLabel(falsy_label))
+            self.results.append(IRAssign(dest_addr, ir_types.IROp.NOP, [0]))
+            self.results.append(IRLabel(truthy_label))
+        elif op == ast.OpType.OP_LOGIC_OR:
+            falsy_label = self.generate_next_label()
+            truthy_label = self.generate_next_label()
+            skippy_label = self.generate_next_label()
+
+            self.generate_normal_jump(truthy_label, expr_lhs.get_op_type(), expr_lhs, expr_rhs)
+            self.generate_normal_jump(truthy_label, expr_rhs.get_op_type(), expr_lhs, expr_rhs)
+
+            self.results.append(IRLabel(truthy_label))
+            self.results.append(IRAssign(dest_addr, ir_types.IROp.NOP, [1]))
+            self.results.append(IRJump(skippy_label))
+
+            self.results.append(IRLabel(falsy_label))
+            self.results.append(IRAssign(dest_addr, ir_types.IROp.NOP, [0]))
+            self.results.append(IRLabel(skippy_label))
+        elif op != ast.OpType.OP_ASSIGN:
+            arg0_addr = expr_lhs.accept_visitor(self)
+            arg1_addr = expr_rhs.accept_visitor(self)
+            self.results.append(IRAssign(dest_addr, ir_types.IROp(op.value), [arg0_addr, arg1_addr]))
+
+            self.toggle_addr_usage(arg1_addr)
+            self.toggle_addr_usage(arg0_addr)
+        else:
+            value_addr = expr_rhs.accept_visitor(self)
+            self.results.append(IRAssign(dest_addr, ir_types.IROp.NOP, [value_addr]))
+            self.toggle_addr_usage(value_addr)
 
         return dest_addr
 
@@ -259,6 +344,7 @@ class IREmitter(ASTVisitor):
         node.get_body().accept_visitor(self)
 
         self.results.append(IRLabel(ret_label))
+        self.results.append(IRReturn())
         self.temp_labels.clear()
         self.name_to_addr_table.clear()
 
@@ -269,26 +355,24 @@ class IREmitter(ASTVisitor):
             node.get_inner().accept_visitor(self)
 
     def visit_if(self, node: ast.Stmt):
-        cond_addr = node.get_conditions().accept_visitor(self)
-        truthy_body = node.get_if_body()
-        falsy_body = node.get_alt_body()
-
+        truthy_body: ast.Stmt = node.get_if_body()
+        falsy_body: ast.Stmt = node.get_alt_body()
         falsy_label = self.generate_next_label()
-        self.temp_labels.append(falsy_label)
-        truthy_label = self.generate_next_label()
-        self.temp_labels.append(truthy_label)
 
-        # NOTE if negation of condition, then go to falsy block. Otherwise fall through truthy block.
-        self.results.append(IRCmp(ir_types.IROp.COMPARE_EQ, cond_addr, 0))
-        self.results.append(IRJump(falsy_label))
+        cond_addr = node.get_conditions().accept_visitor(self)
+        self.results.append(IRJumpIf(falsy_label, ir_types.IROp.COMPARE_EQ, 0, cond_addr))
+
         truthy_body.accept_visitor(self)
-        self.results.append(IRJump(truthy_label))
-        self.temp_labels.pop()
 
-        self.results.append(IRLabel(falsy_label))
-        falsy_body.accept_visitor(self)
-        self.results.append(IRLabel(truthy_label))
-        self.temp_labels.pop()
+        if falsy_body is not None:
+            truthy_label = self.generate_next_label()
+
+            self.results.append(IRJump(truthy_label))
+            self.results.append(IRLabel(falsy_label))
+            falsy_body.accept_visitor(self)
+            self.results.append(IRLabel(truthy_label))
+        else:
+            self.results.append(IRLabel(falsy_label))
 
         self.toggle_addr_usage(cond_addr)
 
